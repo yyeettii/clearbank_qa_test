@@ -12,9 +12,15 @@ namespace ClearBank.DeveloperTest.Services
 
             Account account = null;
 
+            // todo: configure using context injection instead of if/else statements
             if (dataStoreType == "Backup")
             {
                 var accountDataStore = new BackupAccountDataStore();
+                account = accountDataStore.GetAccount(request.DebtorAccountNumber);
+            }
+            if (dataStoreType == "Test")
+            {
+                var accountDataStore = new TestDataStore();
                 account = accountDataStore.GetAccount(request.DebtorAccountNumber);
             }
             else
@@ -28,54 +34,49 @@ namespace ClearBank.DeveloperTest.Services
             switch (request.PaymentScheme)
             {
                 case PaymentScheme.Bacs:
-                    if (account == null)
+                {
+                    if (account != null && account.AllowedPaymentSchemes.HasFlag(AllowedPaymentSchemes.Bacs))
                     {
-                        result.Success = false;
-                    }
-                    else if (!account.AllowedPaymentSchemes.HasFlag(AllowedPaymentSchemes.Bacs))
-                    {
-                        result.Success = false;
+                        result.Success = true;
                     }
                     break;
+                }
 
                 case PaymentScheme.FasterPayments:
-                    if (account == null)
+                    if (account != null &&
+                        account.AllowedPaymentSchemes.HasFlag(AllowedPaymentSchemes.FasterPayments) &&
+                        account.Balance >= request.Amount)
                     {
-                        result.Success = false;
-                    }
-                    else if (!account.AllowedPaymentSchemes.HasFlag(AllowedPaymentSchemes.FasterPayments))
-                    {
-                        result.Success = false;
-                    }
-                    else if (account.Balance < request.Amount)
-                    {
-                        result.Success = false;
+                        result.Success = true;
                     }
                     break;
 
                 case PaymentScheme.Chaps:
-                    if (account == null)
+                    if (account != null && account.AllowedPaymentSchemes.HasFlag(AllowedPaymentSchemes.Chaps) &&
+                        account.Status == AccountStatus.Live)
                     {
-                        result.Success = false;
-                    }
-                    else if (!account.AllowedPaymentSchemes.HasFlag(AllowedPaymentSchemes.Chaps))
-                    {
-                        result.Success = false;
-                    }
-                    else if (account.Status != AccountStatus.Live)
-                    {
-                        result.Success = false;
+                        result.Success = true;
                     }
                     break;
+
+                default:
+                    throw new InvalidOperationException($"Invalid Payment Scheme Provided: {request.PaymentScheme}");
+
             }
 
             if (result.Success)
             {
                 account.Balance -= request.Amount;
 
+                // todo: again, configure using context injection instead of if/else statements
                 if (dataStoreType == "Backup")
                 {
                     var accountDataStore = new BackupAccountDataStore();
+                    accountDataStore.UpdateAccount(account);
+                }
+                if (dataStoreType == "Test")
+                {
+                    var accountDataStore = new TestDataStore();
                     accountDataStore.UpdateAccount(account);
                 }
                 else
@@ -84,7 +85,6 @@ namespace ClearBank.DeveloperTest.Services
                     accountDataStore.UpdateAccount(account);
                 }
             }
-
             return result;
         }
     }
